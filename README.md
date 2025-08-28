@@ -64,7 +64,63 @@ aws cloudformation deploy \
     --stack-name tracking-athena-queries-stack \
     --capabilities CAPABILITY_NAMED_IAM
 
+##Dependency / Workflow Diagram
++-------------------+
+|   config.json     |
+|------------------|
+| Contains:         |
+| - AWS_ACCOUNT_ID   |
+| - LAMBDA_NAME      |
+| - STATE_MACHINE    |
+| - S3_BUCKET        |
+| - EVENTBRIDGE_NAME |
+| - OUTPUT_TYPE      |
+| - TEST_START_DATE  |
+| - TEST_END_DATE    |
++---------+---------+
+          |
+          v
++-------------------+
+| Lambda Function   |
+|------------------|
+| Reads config.json |
+| from S3 or local  |
+| environment vars  |
++---------+---------+
+          |
+          v
++-------------------+     +--------------------+
+| Step Function     |<--->| Lambda (hourly)    |
+| (24-hour Map)     |     | invoked for each h |
++---------+---------+     +--------------------+
+          |
+          v
++-------------------+
+| S3 Bucket         |
+|------------------|
+| Stores output by |
+| year/month/day/  |
+| hour partitioning|
++-------------------+
+          ^
+          |
++-------------------+
+| EventBridge       |
+| Daily Scheduler   |
+|------------------|
+| Triggers Lambda  |
+| daily for prev day|
++-------------------+
 
+###Notes:
+
+Lambda reads config.json either from S3 (preferred) or environment variables.
+
+Step Function Map invokes the Lambda 24 times (once per hour).
+
+EventBridge triggers Lambda daily to process the previous day automatically.
+
+S3 stores results with full partitioning: year=YYYY/month=MM/day=DD/hour=HH.
 ### Configure environment variables to match your account setup.
 
 Use Cases:
