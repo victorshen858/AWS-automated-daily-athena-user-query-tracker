@@ -67,7 +67,7 @@ aws cloudformation deploy \
 <img width="993" height="526" alt="image" src="https://github.com/user-attachments/assets/901eab3f-4081-4e47-b3f6-2eb4c167e99d" />
 
 
-###Notes:
+### Notes:
 
 Lambda reads config.json either from S3 (preferred) or environment variables.
 
