@@ -64,17 +64,8 @@ aws cloudformation deploy \
     --stack-name tracking-athena-queries-stack \
     --capabilities CAPABILITY_NAMED_IAM
 
-flowchart TD
-    A[config.json / Environment Variables] --> B[Lambda Function]
-    B --> C[Step Function: 24-hour Map]
-    C --> B[Lambda invoked per hour]
-    B --> D[S3 Bucket: Output Reports]
-    E[EventBridge Daily Scheduler] --> B
-    style A fill:#f9f,stroke:#333,stroke-width:1px
-    style B fill:#bbf,stroke:#333,stroke-width:1px
-    style C fill:#bfb,stroke:#333,stroke-width:1px
-    style D fill:#ffb,stroke:#333,stroke-width:1px
-    style E fill:#fbb,stroke:#333,stroke-width:1px
+<img width="993" height="526" alt="image" src="https://github.com/user-attachments/assets/901eab3f-4081-4e47-b3f6-2eb4c167e99d" />
+
 
 ###Notes:
 
