@@ -49,4 +49,30 @@ Due to default Athena and CloudTrail behavior, query strings are usually redacte
    - Writes results to **S3**, partitioned by date and hour.
 
 ## S3 Partition Example
+s3://tracking-athena-usernames-logs/year=2025/month=08/day=28/hour=01/report_2025_08_28_h01.csv
 
+
+## Deployment
+
+- Use the **CloudFormation template** `tracking-athena-queries.yaml` to deploy:
+  - Lambda function
+  - Step Function Map
+  - EventBridge daily scheduler
+- Example deploy command:
+
+```bash
+aws cloudformation deploy \
+    --template-file tracking-athena-queries.yaml \
+    --stack-name tracking-athena-queries-stack \
+    --capabilities CAPABILITY_NAMED_IAM
+
+
+Configure environment variables to match your account setup.
+
+Use Cases
+
+Audit and compliance: Track which users ran which Athena queries.
+
+Management reporting: Map queries to workgroups and monitor usage.
+
+Security: Ensure that no queries are being omitted or redacted for oversight.
