@@ -64,53 +64,17 @@ aws cloudformation deploy \
     --stack-name tracking-athena-queries-stack \
     --capabilities CAPABILITY_NAMED_IAM
 
-##Dependency / Workflow Diagram
-+-------------------+
-|   config.json     |
-|------------------|
-| Contains:         |
-| - AWS_ACCOUNT_ID   |
-| - LAMBDA_NAME      |
-| - STATE_MACHINE    |
-| - S3_BUCKET        |
-| - EVENTBRIDGE_NAME |
-| - OUTPUT_TYPE      |
-| - TEST_START_DATE  |
-| - TEST_END_DATE    |
-+---------+---------+
-          |
-          v
-+-------------------+
-| Lambda Function   |
-|------------------|
-| Reads config.json |
-| from S3 or local  |
-| environment vars  |
-+---------+---------+
-          |
-          v
-+-------------------+     +--------------------+
-| Step Function     |<--->| Lambda (hourly)    |
-| (24-hour Map)     |     | invoked for each h |
-+---------+---------+     +--------------------+
-          |
-          v
-+-------------------+
-| S3 Bucket         |
-|------------------|
-| Stores output by |
-| year/month/day/  |
-| hour partitioning|
-+-------------------+
-          ^
-          |
-+-------------------+
-| EventBridge       |
-| Daily Scheduler   |
-|------------------|
-| Triggers Lambda  |
-| daily for prev day|
-+-------------------+
+flowchart TD
+    A[config.json / Environment Variables] --> B[Lambda Function]
+    B --> C[Step Function: 24-hour Map]
+    C --> B[Lambda invoked per hour]
+    B --> D[S3 Bucket: Output Reports]
+    E[EventBridge Daily Scheduler] --> B
+    style A fill:#f9f,stroke:#333,stroke-width:1px
+    style B fill:#bbf,stroke:#333,stroke-width:1px
+    style C fill:#bfb,stroke:#333,stroke-width:1px
+    style D fill:#ffb,stroke:#333,stroke-width:1px
+    style E fill:#fbb,stroke:#333,stroke-width:1px
 
 ###Notes:
 
