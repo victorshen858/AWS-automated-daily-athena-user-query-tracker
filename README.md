@@ -28,7 +28,7 @@ Due to default Athena and CloudTrail behavior, query strings are usually redacte
 
 | Name               | Description |
 |-------------------|-------------|
-| `S3_BUCKET`        | S3 bucket to store query mapping reports |
+| `S3_BUCKET`        | S3 bucket to store query mapping reports (auto-created by CloudFormation if it does not exist) |
 | `OUTPUT_TYPE`      | Output format (`csv` or `json`) |
 | `TEST_START_DATE`  | Optional start date for backfill (YYYY-MM-DD) |
 | `TEST_END_DATE`    | Optional end date for backfill (YYYY-MM-DD) |
@@ -59,17 +59,15 @@ s3://tracking-athena-usernames-logs/year=2025/month=08/day=28/hour=01/report_202
   - Step Function Map
   - EventBridge daily scheduler
 - Example deploy command:
-
-```bash
 aws cloudformation deploy \
     --template-file tracking-athena-queries.yaml \
     --stack-name tracking-athena-queries-stack \
     --capabilities CAPABILITY_NAMED_IAM
 
 
-Configure environment variables to match your account setup.
+### Configure environment variables to match your account setup.
 
-Use Cases
+Use Cases:
 
 Audit and compliance: Track which users ran which Athena queries.
 
