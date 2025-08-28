@@ -1,0 +1,209 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Tracking and Mapping Usernames to Athena Run Queries and Workgroups Workflow
+  (Lambda + Step Function + Scheduler)
+
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Default: tracking-athena-usernames-lambda
+    Description: Name of the Lambda function that tracks Athena queries per user
+  StepFunctionName:
+    Type: String
+    Default: tracking-athena-usernames-state-machine
+    Description: Name of the Step Function for parallel hourly processing
+  S3Bucket:
+    Type: String
+    Default: tracking-athena-usernames-logs
+    Description: S3 bucket to store CSV/JSON outputs
+  OutputType:
+    Type: String
+    Default: csv
+    Description: Output format for reports (csv or json)
+  TestStartDate:
+    Type: String
+    Default: "" # YYYY-MM-DD
+    Description: Optional start date for manual/backfill testing
+  TestEndDate:
+    Type: String
+    Default: "" # YYYY-MM-DD
+    Description: Optional end date for manual/backfill testing
+
+Resources:
+
+  # -------------------------------
+  # Lambda IAM Role
+  # -------------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${LambdaFunctionName}-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: LambdaPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudtrail:LookupEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                Resource:
+                  - !Sub "arn:aws-us-gov:s3:::${S3Bucket}"
+                  - !Sub "arn:aws-us-gov:s3:::${S3Bucket}/*"
+              - Effect: Allow
+                Action:
+                  - athena:StartQueryExecution
+                  - athena:GetQueryExecution
+                  - athena:GetQueryResults
+                  - athena:StopQueryExecution
+                  - athena:GetWorkGroup
+                  - athena:BatchGetQueryExecution
+                Resource: "*"
+
+  # -------------------------------
+  # Lambda Function
+  # -------------------------------
+  AthenaTrackingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.11
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 8000
+      Timeout: 900
+      EphemeralStorage:
+        Size: 1000
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref S3Bucket
+          OUTPUT_TYPE: !Ref OutputType
+          TEST_START_DATE: !Ref TestStartDate
+          TEST_END_DATE: !Ref TestEndDate
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: lambda-code/tracking-athena-usernames-lambda.zip
+
+  # -------------------------------
+  # Step Function IAM Role
+  # -------------------------------
+  StepFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${StepFunctionName}-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: StepFunctionInvokeLambda
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt AthenaTrackingLambda.Arn
+
+  # -------------------------------
+  # Step Function (24-hour Map)
+  # -------------------------------
+  AthenaTrackingStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Ref StepFunctionName
+      RoleArn: !GetAtt StepFunctionRole.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Run Lambda to track Athena queries per hour in parallel",
+          "StartAt": "ProcessAllHours",
+          "States": {
+            "ProcessAllHours": {
+              "Type": "Map",
+              "MaxConcurrency": 6,
+              "ItemsPath": "$.hours",
+              "ItemSelector": {
+                "hour.$": "$$.Map.Item.Value.hour",
+                "report_date.$": "$$.Map.Item.Value.report_date"
+              },
+              "Iterator": {
+                "StartAt": "InvokeHourlyLambda",
+                "States": {
+                  "InvokeHourlyLambda": {
+                    "Type": "Task",
+                    "Resource": "${AthenaTrackingLambda.Arn}",
+                    "Parameters": {
+                      "report_date.$": "$.report_date",
+                      "hour.$": "$.hour"
+                    },
+                    "Retry": [
+                      {
+                        "ErrorEquals": ["States.ALL"],
+                        "IntervalSeconds": 5,
+                        "MaxAttempts": 2,
+                        "BackoffRate": 2
+                      }
+                    ],
+                    "End": true
+                  }
+                }
+              },
+              "End": true
+            }
+          },
+          "TimeoutSeconds": 1800
+        }
+
+  # -------------------------------
+  # EventBridge Scheduler for daily auto-run
+  # -------------------------------
+  AthenaDailyScheduler:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: DailyAthenaQueryReports
+      ScheduleExpression: "cron(0 1 * * ? *)" # 01:00 ET daily
+      FlexibleTimeWindow:
+        Mode: OFF
+      Target:
+        Arn: !GetAtt AthenaTrackingLambda.Arn
+        RoleArn: !GetAtt LambdaExecutionRole.Arn
+        Input: "{}"
+        RetryPolicy:
+          MaximumRetryAttempts: 3
+          MaximumEventAgeInSeconds: 86400
+
+Outputs:
+  LambdaFunctionName:
+    Description: Lambda function for tracking Athena queries per user
+    Value: !Ref AthenaTrackingLambda
+  StepFunctionArn:
+    Description: Step Function ARN for hourly Map execution
+    Value: !Ref AthenaTrackingStateMachine
+  SchedulerName:
+    Description: EventBridge Scheduler name
+    Value: !Ref AthenaDailyScheduler
