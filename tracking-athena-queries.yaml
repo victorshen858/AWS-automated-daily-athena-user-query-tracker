@@ -12,24 +12,37 @@ Parameters:
     Type: String
     Default: tracking-athena-usernames-state-machine
     Description: Name of the Step Function for parallel hourly processing
-  S3Bucket:
+  S3BucketName:
     Type: String
     Default: tracking-athena-usernames-logs
-    Description: S3 bucket to store CSV/JSON outputs
+    Description: Name of the S3 bucket to store CSV/JSON outputs
   OutputType:
     Type: String
     Default: csv
     Description: Output format for reports (csv or json)
   TestStartDate:
     Type: String
-    Default: "" # YYYY-MM-DD
-    Description: Optional start date for manual/backfill testing
+    Default: ""
+    Description: Optional start date for manual/backfill testing (YYYY-MM-DD)
   TestEndDate:
     Type: String
-    Default: "" # YYYY-MM-DD
-    Description: Optional end date for manual/backfill testing
+    Default: ""
+    Description: Optional end date for manual/backfill testing (YYYY-MM-DD)
 
 Resources:
+
+  # -------------------------------
+  # S3 Bucket for output
+  # -------------------------------
+  TrackingS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
 
   # -------------------------------
   # Lambda IAM Role
@@ -69,8 +82,8 @@ Resources:
                   - s3:PutObject
                   - s3:GetBucketLocation
                 Resource:
-                  - !Sub "arn:aws-us-gov:s3:::${S3Bucket}"
-                  - !Sub "arn:aws-us-gov:s3:::${S3Bucket}/*"
+                  - !GetAtt TrackingS3Bucket.Arn
+                  - !Sub "${TrackingS3Bucket.Arn}/*"
               - Effect: Allow
                 Action:
                   - athena:StartQueryExecution
@@ -97,12 +110,12 @@ Resources:
         Size: 1000
       Environment:
         Variables:
-          S3_BUCKET: !Ref S3Bucket
+          S3_BUCKET: !Ref S3BucketName
           OUTPUT_TYPE: !Ref OutputType
           TEST_START_DATE: !Ref TestStartDate
           TEST_END_DATE: !Ref TestEndDate
       Code:
-        S3Bucket: !Ref S3Bucket
+        S3Bucket: !Ref S3BucketName
         S3Key: lambda-code/tracking-athena-usernames-lambda.zip
 
   # -------------------------------
@@ -207,3 +220,6 @@ Outputs:
   SchedulerName:
     Description: EventBridge Scheduler name
     Value: !Ref AthenaDailyScheduler
+  S3BucketName:
+    Description: Name of the automatically created S3 bucket
+    Value: !Ref TrackingS3Bucket
